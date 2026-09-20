@@ -1,0 +1,422 @@
+#include <ESP32Servo.h>
+#include <DHT.h>
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BMP280.h>
+
+// =====================================================
+// MOTOR PINS — ORIGINAL CODE, UNCHANGED
+// =====================================================
+
+#define IN1 27
+#define IN2 26
+#define IN3 25
+#define IN4 33
+
+// =====================================================
+// ULTRASONIC — ORIGINAL CODE, UNCHANGED
+// =====================================================
+
+#define TRIG_PIN 4
+#define ECHO_PIN 5
+
+// =====================================================
+// SERVO — ORIGINAL CODE, UNCHANGED
+// =====================================================
+
+#define SERVO_PIN 13
+
+Servo scanner;
+
+// =====================================================
+// DHT11
+// =====================================================
+
+#define DHT_PIN 16
+#define DHT_TYPE DHT11
+
+DHT dht(DHT_PIN, DHT_TYPE);
+
+// =====================================================
+// MPU6050
+// =====================================================
+
+Adafruit_MPU6050 mpu;
+
+// =====================================================
+// BMP280
+// =====================================================
+
+Adafruit_BMP280 bmp;
+
+// =====================================================
+// MQ-2
+// =====================================================
+
+#define MQ2_AO 34
+#define MQ2_DO 35
+
+// =====================================================
+// GET DISTANCE
+// ORIGINAL CODE — UNCHANGED
+// =====================================================
+
+float getDistance() {
+
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+
+  // If no echo received
+  if (duration == 0) {
+    return 400;
+  }
+
+  float distance = duration * 0.0343 / 2;
+
+  return distance;
+}
+
+// =====================================================
+// MOTOR FUNCTIONS
+// ORIGINAL CODE — UNCHANGED
+// =====================================================
+
+void forward() {
+
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+}
+
+void backward() {
+
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+}
+
+void turnLeft() {
+
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+}
+
+void turnRight() {
+
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+}
+
+void stopRover() {
+
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
+}
+
+// =====================================================
+// SETUP
+// =====================================================
+
+void setup() {
+
+  Serial.begin(115200);
+
+  // ---------- MOTOR ----------
+
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+
+  // ---------- ULTRASONIC ----------
+
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  // ---------- SERVO ----------
+
+  scanner.attach(SERVO_PIN);
+
+  scanner.write(90);
+
+  // ---------- DHT11 ----------
+
+  dht.begin();
+
+  // ---------- MQ2 ----------
+
+  pinMode(MQ2_AO, INPUT);
+  pinMode(MQ2_DO, INPUT);
+
+  // ---------- I2C ----------
+
+  Wire.begin(21, 22);
+
+  // ---------- MPU6050 ----------
+
+  if (mpu.begin()) {
+
+    Serial.println("MPU6050: OK");
+
+    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+
+  } else {
+
+    Serial.println("MPU6050: NOT FOUND");
+  }
+
+  // ---------- BMP280 ----------
+
+  if (bmp.begin(0x76)) {
+
+    Serial.println("BMP280: OK");
+
+  } else if (bmp.begin(0x77)) {
+
+    Serial.println("BMP280: OK at 0x77");
+
+  } else {
+
+    Serial.println("BMP280: NOT FOUND");
+  }
+
+  // ---------- STOP ----------
+
+  stopRover();
+
+  delay(2000);
+
+  Serial.println();
+  Serial.println("==========================================");
+  Serial.println("       MINENOVA SENSOR ROVER");
+  Serial.println("==========================================");
+}
+
+// =====================================================
+// SENSOR MONITORING
+// =====================================================
+
+void monitorSensors() {
+
+  // ===================================================
+  // DHT11
+  // ===================================================
+
+  float humidity = dht.readHumidity();
+  float temperature = dht.readTemperature();
+
+  Serial.println();
+  Serial.println("------------- DHT11 ----------------");
+
+  if (isnan(temperature) || isnan(humidity)) {
+
+    Serial.println("DHT11: ERROR");
+
+  } else {
+
+    Serial.print("Temperature : ");
+    Serial.print(temperature);
+    Serial.println(" °C");
+
+    Serial.print("Humidity    : ");
+    Serial.print(humidity);
+    Serial.println(" %");
+  }
+
+  // ===================================================
+  // MPU6050
+  // ===================================================
+
+  sensors_event_t acceleration;
+  sensors_event_t gyro;
+  sensors_event_t mpuTemperature;
+
+  mpu.getEvent(
+    &acceleration,
+    &gyro,
+    &mpuTemperature
+  );
+
+  Serial.println();
+  Serial.println("------------- MPU6050 ---------------");
+
+  Serial.print("Accel X : ");
+  Serial.print(acceleration.acceleration.x);
+  Serial.println(" m/s2");
+
+  Serial.print("Accel Y : ");
+  Serial.print(acceleration.acceleration.y);
+  Serial.println(" m/s2");
+
+  Serial.print("Accel Z : ");
+  Serial.print(acceleration.acceleration.z);
+  Serial.println(" m/s2");
+
+  Serial.print("Gyro X  : ");
+  Serial.print(gyro.gyro.x);
+  Serial.println(" rad/s");
+
+  Serial.print("Gyro Y  : ");
+  Serial.print(gyro.gyro.y);
+  Serial.println(" rad/s");
+
+  Serial.print("Gyro Z  : ");
+  Serial.print(gyro.gyro.z);
+  Serial.println(" rad/s");
+
+  // ===================================================
+  // BMP280
+  // ===================================================
+
+  Serial.println();
+  Serial.println("------------- BMP280 ----------------");
+
+  Serial.print("Temperature : ");
+  Serial.print(bmp.readTemperature());
+  Serial.println(" °C");
+
+  Serial.print("Pressure    : ");
+  Serial.print(bmp.readPressure() / 100.0);
+  Serial.println(" hPa");
+
+  // ===================================================
+  // MQ2
+  // ===================================================
+
+  int gasValue = analogRead(MQ2_AO);
+  int gasStatus = digitalRead(MQ2_DO);
+
+  Serial.println();
+  Serial.println("------------- MQ-2 ------------------");
+
+  Serial.print("Gas Analog  : ");
+  Serial.println(gasValue);
+
+  Serial.print("Gas Digital : ");
+
+  if (gasStatus == HIGH) {
+    Serial.println("NORMAL");
+  } else {
+    Serial.println("GAS DETECTED");
+  }
+
+  Serial.println();
+  Serial.println("==========================================");
+}
+
+// =====================================================
+// MAIN LOOP
+// ORIGINAL NAVIGATION LOGIC KEPT
+// SENSOR MONITORING ADDED
+// =====================================================
+
+void loop() {
+
+  // Look forward
+  scanner.write(90);
+  delay(300);
+
+  float frontDistance = getDistance();
+
+  Serial.print("Front: ");
+  Serial.println(frontDistance);
+
+  // PATH IS CLEAR
+  if (frontDistance > 25) {
+
+    forward();
+
+  }
+
+  // OBSTACLE DETECTED
+  else {
+
+    // Stop
+    stopRover();
+    delay(500);
+
+    // Move backward
+    backward();
+    delay(500);
+
+    // Stop again
+    stopRover();
+    delay(300);
+
+    // -------- SCAN LEFT --------
+
+    scanner.write(0);
+    delay(700);
+
+    float leftDistance = getDistance();
+
+    Serial.print("Left: ");
+    Serial.println(leftDistance);
+
+    // -------- SCAN RIGHT --------
+
+    scanner.write(180);
+    delay(700);
+
+    float rightDistance = getDistance();
+
+    Serial.print("Right: ");
+    Serial.println(rightDistance);
+
+    // Return sensor to front
+    scanner.write(90);
+    delay(400);
+
+    // -------- CHOOSE BEST PATH --------
+
+    if (leftDistance > rightDistance) {
+
+      Serial.println("Turning LEFT");
+
+      turnLeft();
+      delay(600);
+
+    }
+
+    else {
+
+      Serial.println("Turning RIGHT");
+
+      turnRight();
+      delay(600);
+    }
+
+    stopRover();
+    delay(200);
+  }
+
+  // ===================================================
+  // MONITOR ALL OTHER SENSORS
+  // ===================================================
+
+  monitorSensors();
+
+  delay(1000);
+}
